@@ -23,8 +23,8 @@ import com.sageserpent.kineticmerge.core.SectionedCodeTest.{
   Path,
   given_Funnel_Element
 }
-import org.junit.jupiter.api.TestFactory
 import com.typesafe.scalalogging.StrictLogging
+import org.junit.jupiter.api.TestFactory
 
 object BlockDuplicationAndCondensationTests:
   given HashFunction = Hashing.murmur3_32_fixed()
@@ -54,7 +54,8 @@ class BlockDuplicationAndCondensationTests extends StrictLogging:
       minimumMatchSize = 1,
       thresholdSizeFractionForMatching = 0,
       minimumAmbiguousMatchSize = 0,
-      ambiguousMatchesThreshold = 10
+      ambiguousMatchesThreshold = 10,
+      includeFileMovesLackingMigration = true
     )
 
     Trials.api.booleans.withLimit(2).dynamicTests { mirrorImage =>
@@ -224,7 +225,8 @@ class BlockDuplicationAndCondensationTests extends StrictLogging:
       minimumMatchSize = 1,
       thresholdSizeFractionForMatching = 0,
       minimumAmbiguousMatchSize = 0,
-      ambiguousMatchesThreshold = 10
+      ambiguousMatchesThreshold = 10,
+      includeFileMovesLackingMigration = true
     )
 
     Trials.api.booleans.withLimit(2).dynamicTests { mirrorImage =>
@@ -317,7 +319,8 @@ class BlockDuplicationAndCondensationTests extends StrictLogging:
       minimumMatchSize = 1,
       thresholdSizeFractionForMatching = 0,
       minimumAmbiguousMatchSize = 0,
-      ambiguousMatchesThreshold = 10
+      ambiguousMatchesThreshold = 10,
+      includeFileMovesLackingMigration = true
     )
 
     Trials.api.booleans.withLimit(2).dynamicTests { mirrorImage =>
@@ -414,7 +417,8 @@ class BlockDuplicationAndCondensationTests extends StrictLogging:
       minimumMatchSize = 1,
       thresholdSizeFractionForMatching = 0,
       minimumAmbiguousMatchSize = 0,
-      ambiguousMatchesThreshold = 10
+      ambiguousMatchesThreshold = 10,
+      includeFileMovesLackingMigration = true
     )
 
     Trials.api.booleans.withLimit(2).dynamicTests { mirrorImage =>

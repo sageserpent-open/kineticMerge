@@ -323,48 +323,88 @@ object MatchAnalysis extends StrictLogging:
 
       def withFileMovesLackingMigration: MatchesAndTheirSections =
         if !configuration.includeFileMovesLackingMigration then
-          val elementEq = summon[Eq[Element]]
+          val elementEquality = summon[Eq[Element]]
 
-          val oneSidedMatches = baseSizesByPath.collect {
-            case (path, baseSize)
-                if 0 < baseSize && !rightSizesByPath.contains(
-                  path
-                ) && leftSizesByPath
-                  .get(path)
-                  .contains(baseSize) =>
-              val baseFile = baseSources.filesByPath(path)
-              val leftFile = leftSources.filesByPath(path)
-              Option.when(
-                baseFile.content.corresponds(leftFile.content)(elementEq.eqv)
-              ) {
-                Match.BaseAndLeft(
-                  baseSources.section(path)(0, baseSize),
-                  leftSources.section(path)(0, baseSize)
-                )
-              }
-            case (path, baseSize)
-                if 0 < baseSize && !leftSizesByPath.contains(
-                  path
-                ) && rightSizesByPath
-                  .get(path)
-                  .contains(baseSize) =>
-              val baseFile  = baseSources.filesByPath(path)
-              val rightFile = rightSources.filesByPath(path)
-              Option.when(
-                baseFile.content.corresponds(rightFile.content)(elementEq.eqv)
-              ) {
-                Match.BaseAndRight(
-                  baseSources.section(path)(0, baseSize),
-                  rightSources.section(path)(0, baseSize)
-                )
-              }
-          }.flatten
+          val matchesForFileMovesLackingMigration =
+            val groupsOfBasePathsBySize  = baseSizesByPath.groupMap(_._2)(_._1)
+            val groupsOfLeftPathsBySize  = leftSizesByPath.groupMap(_._2)(_._1)
+            val groupsOfRightPathsBySize = rightSizesByPath.groupMap(_._2)(_._1)
 
-          oneSidedMatches.foldLeft(empty) { (matchesAndTheirSections, aMatch) =>
-            matchesAndTheirSections.withMatch(
-              aMatch,
-              pairwiseMatchesKnockOutFingerprintedInclusions = true
-            )
+            val baseAndLeftSizeAlignments =
+              groupsOfBasePathsBySize `zipByKey` groupsOfLeftPathsBySize
+            val baseAndRightSizeAlignments =
+              groupsOfBasePathsBySize `zipByKey` groupsOfRightPathsBySize
+
+            val allSidesSizeAlignments =
+              (baseAndLeftSizeAlignments `zipByKeyWith` baseAndRightSizeAlignments) {
+                case ((basePaths, leftPaths), (_, rightPaths)) =>
+                  (basePaths, leftPaths, rightPaths)
+              }
+
+            val baseAndLeftMatches = baseAndLeftSizeAlignments.collect {
+              case (size, (basePaths, leftPaths))
+                  if !groupsOfRightPathsBySize.contains(size) =>
+                for
+                  basePath <- basePaths
+                  leftPath <- leftPaths
+                  baseFile = baseSources.filesByPath(basePath)
+                  leftFile = leftSources.filesByPath(leftPath)
+                  if (baseFile.content `corresponds` leftFile.content)(
+                    elementEquality.eqv
+                  )
+                yield Match.BaseAndLeft(
+                  baseSources.section(basePath)(startOffset = 0, size),
+                  leftSources.section(leftPath)(startOffset = 0, size)
+                )
+            }.flatten
+
+            val baseAndRightMatches = baseAndRightSizeAlignments.collect {
+              case (size, (basePaths, rightPaths))
+                  if !groupsOfLeftPathsBySize.contains(size) =>
+                for
+                  basePath  <- basePaths
+                  rightPath <- rightPaths
+                  baseFile  = baseSources.filesByPath(basePath)
+                  rightFile = rightSources.filesByPath(rightPath)
+                  if (baseFile.content `corresponds` rightFile.content)(
+                    elementEquality.eqv
+                  )
+                yield Match.BaseAndRight(
+                  baseSources.section(basePath)(startOffset = 0, size),
+                  rightSources.section(rightPath)(startOffset = 0, size)
+                )
+            }.flatten
+
+            val allSidesMatches = allSidesSizeAlignments.collect {
+              case (size, (basePaths, leftPaths, rightPaths)) =>
+                for
+                  basePath  <- basePaths
+                  leftPath  <- leftPaths
+                  rightPath <- rightPaths
+                  baseFile  = baseSources.filesByPath(basePath)
+                  leftFile  = leftSources.filesByPath(leftPath)
+                  rightFile = rightSources.filesByPath(rightPath)
+                  if (baseFile.content `corresponds` leftFile.content)(
+                    elementEquality.eqv
+                  ) && (baseFile.content `corresponds` rightFile.content)(
+                    elementEquality.eqv
+                  )
+                yield Match.AllSides(
+                  baseSources.section(basePath)(startOffset = 0, size),
+                  leftSources.section(leftPath)(startOffset = 0, size),
+                  rightSources.section(rightPath)(startOffset = 0, size)
+                )
+            }.flatten
+
+            baseAndLeftMatches ++ baseAndRightMatches ++ allSidesMatches
+          end matchesForFileMovesLackingMigration
+
+          matchesForFileMovesLackingMigration.foldLeft(empty) {
+            (matchesAndTheirSections, aMatch) =>
+              matchesAndTheirSections.withMatch(
+                aMatch,
+                pairwiseMatchesKnockOutFingerprintedInclusions = true
+              )
           }
         else empty
       end withFileMovesLackingMigration
@@ -2120,6 +2160,7 @@ object MatchAnalysis extends StrictLogging:
           override val progressRecording: ProgressRecording     =
             configuration.progressRecording
           override val label: String = "Meta-match analysis"
+          override val includeFileMovesLackingMigration: Boolean = true
         end metaMatchConfiguration
 
         given Eq[Section[Element]] = Eq.by(_.content: Seq[Element])
@@ -4238,7 +4279,9 @@ object MatchAnalysis extends StrictLogging:
     val minimumAmbiguousMatchSize: Int
     val ambiguousMatchesThreshold: Int
     val progressRecording: ProgressRecording
-    val label: String                             = ""
+    val label: String = ""
+    // TODO: this name might be wrong, because one-sided edits of files are also
+    // affected by it. Need to think about the implications....
     val includeFileMovesLackingMigration: Boolean = false
   end AbstractConfiguration
 
