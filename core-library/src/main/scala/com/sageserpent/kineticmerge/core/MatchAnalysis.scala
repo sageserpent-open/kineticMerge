@@ -321,38 +321,53 @@ object MatchAnalysis extends StrictLogging:
           size
         )
 
-      def withAllMatchesOfAtLeastTheSureFireWindowSize()
-          : MatchesAndTheirSections =
-        val sessionLabel =
-          "All sure-fire matches found so far down to size:".labelled
+      def withFileMovesLackingMigration: MatchesAndTheirSections =
+        if !configuration.includeFileMovesLackingMigration then
+          val elementEq = summon[Eq[Element]]
 
-        val finalSessionLabel =
-          "All sure-fire matches found working down from size:".labelled
+          val oneSidedMatches = baseSizesByPath.collect {
+            case (path, baseSize)
+                if 0 < baseSize && !rightSizesByPath.contains(
+                  path
+                ) && leftSizesByPath
+                  .get(path)
+                  .contains(baseSize) =>
+              val baseFile = baseSources.filesByPath(path)
+              val leftFile = leftSources.filesByPath(path)
+              Option.when(
+                baseFile.content.corresponds(leftFile.content)(elementEq.eqv)
+              ) {
+                Match.BaseAndLeft(
+                  baseSources.section(path)(0, baseSize),
+                  leftSources.section(path)(0, baseSize)
+                )
+              }
+            case (path, baseSize)
+                if 0 < baseSize && !leftSizesByPath.contains(
+                  path
+                ) && rightSizesByPath
+                  .get(path)
+                  .contains(baseSize) =>
+              val baseFile  = baseSources.filesByPath(path)
+              val rightFile = rightSources.filesByPath(path)
+              Option.when(
+                baseFile.content.corresponds(rightFile.content)(elementEq.eqv)
+              ) {
+                Match.BaseAndRight(
+                  baseSources.section(path)(0, baseSize),
+                  rightSources.section(path)(0, baseSize)
+                )
+              }
+          }.flatten
 
-        if 0 < maximumPossibleMatchSize then
-          Using(
-            progressRecording.newSession(
-              label = sessionLabel,
-              maximumProgress = maximumPossibleMatchSize,
-              finalLabel = Some(finalSessionLabel)
-            )(initialProgress = maximumPossibleMatchSize)
-          ) { progressRecordingSession =>
-            given MatchSearchingContext =
-              new MatchSearchingContext:
-                override val minimumMatchSizeConsidered: Int =
-                  minimumSureFireWindowSizeAcrossAllFilesOverAllSides
-                override def thresholdSize(fileSize: Int): Int =
-                  thresholdSizeForMatching(fileSize)
-
-            withAllMatches(
-              matchesAndTheirSections = empty,
-              looseExclusiveUpperBoundOnMaximumMatchSize =
-                1 + maximumPossibleMatchSize
-            )(using progressRecordingSession)
-          }.get
+          oneSidedMatches.foldLeft(empty) { (matchesAndTheirSections, aMatch) =>
+            matchesAndTheirSections.withMatch(
+              aMatch,
+              pairwiseMatchesKnockOutFingerprintedInclusions = true
+            )
+          }
         else empty
-        end if
-      end withAllMatchesOfAtLeastTheSureFireWindowSize
+      end withFileMovesLackingMigration
 
       given Ordering[BiteEdge] = Ordering.fromLessThan {
         case (
@@ -1188,6 +1203,39 @@ object MatchAnalysis extends StrictLogging:
       def rightSections: Set[Section[Element]] =
         rightSectionsByPath.values.flatMap(_.iterator).toSet
 
+      def withAllMatchesOfAtLeastTheSureFireWindowSize()
+          : MatchesAndTheirSections =
+        val sessionLabel =
+          "All sure-fire matches found so far down to size:".labelled
+
+        val finalSessionLabel =
+          "All sure-fire matches found working down from size:".labelled
+
+        if 0 < maximumPossibleMatchSize then
+          Using(
+            progressRecording.newSession(
+              label = sessionLabel,
+              maximumProgress = maximumPossibleMatchSize,
+              finalLabel = Some(finalSessionLabel)
+            )(initialProgress = maximumPossibleMatchSize)
+          ) { progressRecordingSession =>
+            given MatchSearchingContext =
+              new MatchSearchingContext:
+                override val minimumMatchSizeConsidered: Int =
+                  minimumSureFireWindowSizeAcrossAllFilesOverAllSides
+                override def thresholdSize(fileSize: Int): Int =
+                  thresholdSizeForMatching(fileSize)
+
+            withAllMatches(
+              matchesAndTheirSections = this,
+              looseExclusiveUpperBoundOnMaximumMatchSize =
+                1 + maximumPossibleMatchSize
+            )(using progressRecordingSession)
+          }.get
+        else this
+        end if
+      end withAllMatchesOfAtLeastTheSureFireWindowSize
+
       def withAllSmallFryMatches(): MatchesAndTheirSections =
         if minimumSureFireWindowSizeAcrossAllFilesOverAllSides > minimumWindowSizeAcrossAllFilesOverAllSides
         then
@@ -1462,7 +1510,8 @@ object MatchAnalysis extends StrictLogging:
       end contains
 
       private def withMatch(
-          aMatch: GenericMatch[Element]
+          aMatch: GenericMatch[Element],
+          pairwiseMatchesKnockOutFingerprintedInclusions: Boolean = false
       ): MatchesAndTheirSections =
         require(!contains(aMatch))
 
@@ -1486,21 +1535,45 @@ object MatchAnalysis extends StrictLogging:
               baseSectionsByPath = baseIncluding(baseSection),
               leftSectionsByPath = leftIncluding(leftSection),
               sectionsAndTheirMatches =
-                sectionsAndTheirMatches + (baseSection -> aMatch) + (leftSection -> aMatch)
+                sectionsAndTheirMatches + (baseSection -> aMatch) + (leftSection -> aMatch),
+              baseFingerprintedInclusionsByPath =
+                if pairwiseMatchesKnockOutFingerprintedInclusions then
+                  knockOutFromBaseFingerprintedInclusions(baseSection)
+                else baseFingerprintedInclusionsByPath,
+              leftFingerprintedInclusionsByPath =
+                if pairwiseMatchesKnockOutFingerprintedInclusions then
+                  knockOutFromLeftFingerprintedInclusions(leftSection)
+                else leftFingerprintedInclusionsByPath
             )
           case baseAndRight @ Match.BaseAndRight(baseSection, rightSection) =>
             copy(
               baseSectionsByPath = baseIncluding(baseSection),
               rightSectionsByPath = rightIncluding(rightSection),
               sectionsAndTheirMatches =
-                sectionsAndTheirMatches + (baseSection -> aMatch) + (rightSection -> aMatch)
+                sectionsAndTheirMatches + (baseSection -> aMatch) + (rightSection -> aMatch),
+              baseFingerprintedInclusionsByPath =
+                if pairwiseMatchesKnockOutFingerprintedInclusions then
+                  knockOutFromBaseFingerprintedInclusions(baseSection)
+                else baseFingerprintedInclusionsByPath,
+              rightFingerprintedInclusionsByPath =
+                if pairwiseMatchesKnockOutFingerprintedInclusions then
+                  knockOutFromRightFingerprintedInclusions(rightSection)
+                else rightFingerprintedInclusionsByPath
             )
           case leftAndRight @ Match.LeftAndRight(leftSection, rightSection) =>
             copy(
               leftSectionsByPath = leftIncluding(leftSection),
               rightSectionsByPath = rightIncluding(rightSection),
               sectionsAndTheirMatches =
-                sectionsAndTheirMatches + (leftSection -> aMatch) + (rightSection -> aMatch)
+                sectionsAndTheirMatches + (leftSection -> aMatch) + (rightSection -> aMatch),
+              leftFingerprintedInclusionsByPath =
+                if pairwiseMatchesKnockOutFingerprintedInclusions then
+                  knockOutFromLeftFingerprintedInclusions(leftSection)
+                else leftFingerprintedInclusionsByPath,
+              rightFingerprintedInclusionsByPath =
+                if pairwiseMatchesKnockOutFingerprintedInclusions then
+                  knockOutFromRightFingerprintedInclusions(rightSection)
+                else rightFingerprintedInclusionsByPath
             )
         end match
       end withMatch
@@ -4155,7 +4228,8 @@ object MatchAnalysis extends StrictLogging:
       override def hashCode(): Int = fingerprint.hashCode()
     end PotentialMatchKey
 
-    MatchesAndTheirSections.withAllMatchesOfAtLeastTheSureFireWindowSize()
+    MatchesAndTheirSections.withFileMovesLackingMigration
+      .withAllMatchesOfAtLeastTheSureFireWindowSize()
   end of
 
   sealed trait AbstractConfiguration:
@@ -4164,7 +4238,8 @@ object MatchAnalysis extends StrictLogging:
     val minimumAmbiguousMatchSize: Int
     val ambiguousMatchesThreshold: Int
     val progressRecording: ProgressRecording
-    val label: String = ""
+    val label: String                             = ""
+    val includeFileMovesLackingMigration: Boolean = false
   end AbstractConfiguration
 
   class AdmissibleFailure(message: String) extends RuntimeException(message)
@@ -4180,6 +4255,9 @@ object MatchAnalysis extends StrictLogging:
     *   matches at all.
     * @param progressRecording
     *   Used to record progress during matching.
+    * @param includeFileMovesLackingMigration
+    *   If true, file moves lacking migration are included (disables one-sided
+    *   file deletion optimization).
     */
   case class Configuration(
       minimumMatchSize: Int,
@@ -4187,7 +4265,8 @@ object MatchAnalysis extends StrictLogging:
       minimumAmbiguousMatchSize: Int,
       ambiguousMatchesThreshold: Int,
       progressRecording: ProgressRecording = NoProgressRecording,
-      override val label: String = ""
+      override val label: String = "",
+      override val includeFileMovesLackingMigration: Boolean = false
   ) extends AbstractConfiguration:
     // TODO: why would `minimumMatchSize` be zero?
     require(0 <= minimumMatchSize)
