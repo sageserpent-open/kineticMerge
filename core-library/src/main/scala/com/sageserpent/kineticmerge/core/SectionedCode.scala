@@ -65,11 +65,16 @@ object SectionedCode extends StrictLogging:
   )(using
       hashFunction: HashFunction
   ): Either[Throwable, SectionedCode[Path, Element]] =
+    val empty =
+      MatchAnalysis.emptyInContextOf(baseSources, leftSources, rightSources)(
+        configuration
+      )
+
     val withAllMatchesOfAtLeastTheSureFireWindowSize =
-      MatchAnalysis.of(baseSources, leftSources, rightSources)(configuration)
+      empty.withAllMatchesOfAtLeastTheSureFireWindowSize
 
     val withAllMatchesOfAtLeastTheMinimumWindowSize =
-      withAllMatchesOfAtLeastTheSureFireWindowSize.withAllSmallFryMatches()
+      withAllMatchesOfAtLeastTheSureFireWindowSize.withAllSmallFryMatches
 
     val withTinyMatchesIncluded =
       withAllMatchesOfAtLeastTheMinimumWindowSize.withTinyMatches

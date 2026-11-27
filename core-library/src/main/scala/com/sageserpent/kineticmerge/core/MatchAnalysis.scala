@@ -28,7 +28,9 @@ import scala.collection.{immutable, mutable}
 import scala.util.Using
 
 trait MatchAnalysis[Path, Element]:
-  def withAllSmallFryMatches(): MatchAnalysis[Path, Element]
+  def withAllMatchesOfAtLeastTheSureFireWindowSize: MatchAnalysis[Path, Element]
+
+  def withAllSmallFryMatches: MatchAnalysis[Path, Element]
 
   def reconcileOverlappingMatches(
       enabled: Boolean
@@ -84,7 +86,7 @@ object MatchAnalysis extends StrictLogging:
     *   A [[MatchAnalysis]] that contains a breakdown into [[GenericMatch]]
     *   instances.
     */
-  def of[Path, Element: {Eq, Funnel}](
+  def emptyInContextOf[Path, Element: {Eq, Funnel}](
       baseSources: Sources[Path, Element],
       leftSources: Sources[Path, Element],
       rightSources: Sources[Path, Element]
@@ -1243,7 +1245,7 @@ object MatchAnalysis extends StrictLogging:
       def rightSections: Set[Section[Element]] =
         rightSectionsByPath.values.flatMap(_.iterator).toSet
 
-      def withAllMatchesOfAtLeastTheSureFireWindowSize()
+      def withAllMatchesOfAtLeastTheSureFireWindowSize
           : MatchesAndTheirSections =
         val sessionLabel =
           "All sure-fire matches found so far down to size:".labelled
@@ -1276,7 +1278,7 @@ object MatchAnalysis extends StrictLogging:
         end if
       end withAllMatchesOfAtLeastTheSureFireWindowSize
 
-      def withAllSmallFryMatches(): MatchesAndTheirSections =
+      def withAllSmallFryMatches: MatchesAndTheirSections =
         if minimumSureFireWindowSizeAcrossAllFilesOverAllSides > minimumWindowSizeAcrossAllFilesOverAllSides
         then
           val maximumSmallFryWindowSize =
@@ -2174,11 +2176,11 @@ object MatchAnalysis extends StrictLogging:
 
         end given
 
-        val metaMatchAnalysis = of(
+        val metaMatchAnalysis = emptyInContextOf(
           baseSourcesForMetaMatching,
           leftSourcesForMetaMatching,
           rightSourcesForMetaMatching
-        )(metaMatchConfiguration)
+        )(metaMatchConfiguration).withAllMatchesOfAtLeastTheSureFireWindowSize
 
         // 3. The resulting meta-matches provide parallel sequences of sections
         // that are unzipped to yield corresponding all-sides and pairwise
@@ -4269,9 +4271,8 @@ object MatchAnalysis extends StrictLogging:
       override def hashCode(): Int = fingerprint.hashCode()
     end PotentialMatchKey
 
-    MatchesAndTheirSections.withFileMovesLackingMigration
-      .withAllMatchesOfAtLeastTheSureFireWindowSize()
-  end of
+    MatchesAndTheirSections.empty
+  end emptyInContextOf
 
   sealed trait AbstractConfiguration:
     val minimumMatchSize: Int
