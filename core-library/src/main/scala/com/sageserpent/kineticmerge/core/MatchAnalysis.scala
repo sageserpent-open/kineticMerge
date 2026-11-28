@@ -2054,7 +2054,6 @@ object MatchAnalysis extends StrictLogging:
           override val progressRecording: ProgressRecording     =
             configuration.progressRecording
           override val label: String = "Meta-match analysis"
-          override val includeFileMovesLackingMigration: Boolean = true
         end metaMatchConfiguration
 
         given Eq[Section[Element]] = Eq.by(_.content: Seq[Element])
@@ -4173,9 +4172,6 @@ object MatchAnalysis extends StrictLogging:
     val ambiguousMatchesThreshold: Int
     val progressRecording: ProgressRecording
     val label: String = ""
-    // TODO: this name might be wrong, because one-sided edits of files are also
-    // affected by it. Need to think about the implications....
-    val includeFileMovesLackingMigration: Boolean = false
   end AbstractConfiguration
 
   class AdmissibleFailure(message: String) extends RuntimeException(message)
@@ -4191,9 +4187,6 @@ object MatchAnalysis extends StrictLogging:
     *   matches at all.
     * @param progressRecording
     *   Used to record progress during matching.
-    * @param includeFileMovesLackingMigration
-    *   If true, file moves lacking migration are included (disables one-sided
-    *   file deletion optimization).
     */
   case class Configuration(
       minimumMatchSize: Int,
@@ -4201,8 +4194,7 @@ object MatchAnalysis extends StrictLogging:
       minimumAmbiguousMatchSize: Int,
       ambiguousMatchesThreshold: Int,
       progressRecording: ProgressRecording = NoProgressRecording,
-      override val label: String = "",
-      override val includeFileMovesLackingMigration: Boolean = false
+      override val label: String = ""
   ) extends AbstractConfiguration:
     // TODO: why would `minimumMatchSize` be zero?
     require(0 <= minimumMatchSize)
