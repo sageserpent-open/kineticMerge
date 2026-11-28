@@ -2291,8 +2291,7 @@ object Main extends StrictLogging:
               // NOTE: we don't consult `mergeResultsByPath` because we know the
               // outcome already. This is important, because deletion of an
               // entire file on just one side is treated as a special case by
-              // `CodeMotionAnalysisExtension.mergeResultsByPath` and does not
-              // necessarily remove the content.
+              // `SectionedCodeExtension.merge` and does not necessarily remove the content.
               if bestAncestorCommitIdContent.isDefined then
                 captureRenamesOfPathDeletedOnJustOneSide(partialResult)
               else right(partialResult)
@@ -2301,8 +2300,7 @@ object Main extends StrictLogging:
               // NOTE: we don't consult `mergeResultsByPath` because we know the
               // outcome already. This is important, because deletion of an
               // entire file on just one side is treated as a special case by
-              // `CodeMotionAnalysisExtension.mergeResultsByPath` and does not
-              // necessarily remove the content.
+              // `SectionedCodeExtension.merge` and does not necessarily remove the content.
               for
                 _                      <- recordDeletionInIndex(path)
                 _                      <- deleteFile(path)
