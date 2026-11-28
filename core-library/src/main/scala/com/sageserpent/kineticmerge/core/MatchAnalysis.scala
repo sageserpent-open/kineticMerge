@@ -1489,19 +1489,69 @@ object MatchAnalysis extends StrictLogging:
                 knockOutFromRightFingerprintedInclusions(rightSection)
             )
           case baseAndLeft @ Match.BaseAndLeft(baseSection, leftSection) =>
-            copy(
-              baseSectionsByPath = baseIncluding(baseSection),
-              leftSectionsByPath = leftIncluding(leftSection),
-              sectionsAndTheirMatches =
-                sectionsAndTheirMatches + (baseSection -> aMatch) + (leftSection -> aMatch)
-            )
+            val eligibleToKnockOut =
+              val basePath = baseSources.pathFor(baseSection)
+              val leftPath = leftSources.pathFor(leftSection)
+              val size     = aMatch.size
+              !configuration.includeFileMovesLackingMigration &&
+              basePath == leftPath && baseSizesByPath(
+                basePath
+              ) == size && leftSizesByPath(
+                leftPath
+              ) == size && !rightSizesByPath.contains(basePath)
+            end eligibleToKnockOut
+
+            if eligibleToKnockOut then
+              copy(
+                baseSectionsByPath = baseIncluding(baseSection),
+                leftSectionsByPath = leftIncluding(leftSection),
+                sectionsAndTheirMatches =
+                  sectionsAndTheirMatches + (baseSection -> aMatch) + (leftSection -> aMatch),
+                baseFingerprintedInclusionsByPath =
+                  knockOutFromBaseFingerprintedInclusions(baseSection),
+                leftFingerprintedInclusionsByPath =
+                  knockOutFromLeftFingerprintedInclusions(leftSection)
+              )
+            else
+              copy(
+                baseSectionsByPath = baseIncluding(baseSection),
+                leftSectionsByPath = leftIncluding(leftSection),
+                sectionsAndTheirMatches =
+                  sectionsAndTheirMatches + (baseSection -> aMatch) + (leftSection -> aMatch)
+              )
+            end if
           case baseAndRight @ Match.BaseAndRight(baseSection, rightSection) =>
-            copy(
-              baseSectionsByPath = baseIncluding(baseSection),
-              rightSectionsByPath = rightIncluding(rightSection),
-              sectionsAndTheirMatches =
-                sectionsAndTheirMatches + (baseSection -> aMatch) + (rightSection -> aMatch)
-            )
+            val eligibleToKnockOut =
+              val basePath  = baseSources.pathFor(baseSection)
+              val rightPath = rightSources.pathFor(rightSection)
+              val size      = aMatch.size
+              !configuration.includeFileMovesLackingMigration &&
+              basePath == rightPath && baseSizesByPath(
+                basePath
+              ) == size && rightSizesByPath(
+                rightPath
+              ) == size && !leftSizesByPath.contains(basePath)
+            end eligibleToKnockOut
+
+            if eligibleToKnockOut then
+              copy(
+                baseSectionsByPath = baseIncluding(baseSection),
+                rightSectionsByPath = rightIncluding(rightSection),
+                sectionsAndTheirMatches =
+                  sectionsAndTheirMatches + (baseSection -> aMatch) + (rightSection -> aMatch),
+                baseFingerprintedInclusionsByPath =
+                  knockOutFromBaseFingerprintedInclusions(baseSection),
+                rightFingerprintedInclusionsByPath =
+                  knockOutFromRightFingerprintedInclusions(rightSection)
+              )
+            else
+              copy(
+                baseSectionsByPath = baseIncluding(baseSection),
+                rightSectionsByPath = rightIncluding(rightSection),
+                sectionsAndTheirMatches =
+                  sectionsAndTheirMatches + (baseSection -> aMatch) + (rightSection -> aMatch)
+              )
+            end if
           case leftAndRight @ Match.LeftAndRight(leftSection, rightSection) =>
             copy(
               leftSectionsByPath = leftIncluding(leftSection),
@@ -2054,6 +2104,7 @@ object MatchAnalysis extends StrictLogging:
           override val progressRecording: ProgressRecording     =
             configuration.progressRecording
           override val label: String = "Meta-match analysis"
+          override val includeFileMovesLackingMigration: Boolean = true
         end metaMatchConfiguration
 
         given Eq[Section[Element]] = Eq.by(_.content: Seq[Element])
@@ -4172,6 +4223,9 @@ object MatchAnalysis extends StrictLogging:
     val ambiguousMatchesThreshold: Int
     val progressRecording: ProgressRecording
     val label: String = ""
+    // TODO: this name might be wrong, because one-sided edits of files are also
+    // affected by it. Need to think about the implications....
+    val includeFileMovesLackingMigration: Boolean = false
   end AbstractConfiguration
 
   class AdmissibleFailure(message: String) extends RuntimeException(message)
@@ -4187,6 +4241,9 @@ object MatchAnalysis extends StrictLogging:
     *   matches at all.
     * @param progressRecording
     *   Used to record progress during matching.
+    * @param includeFileMovesLackingMigration
+    *   If true, file moves lacking migration are included (disables one-sided
+    *   file deletion optimization).
     */
   case class Configuration(
       minimumMatchSize: Int,
@@ -4194,7 +4251,8 @@ object MatchAnalysis extends StrictLogging:
       minimumAmbiguousMatchSize: Int,
       ambiguousMatchesThreshold: Int,
       progressRecording: ProgressRecording = NoProgressRecording,
-      override val label: String = ""
+      override val label: String = "",
+      override val includeFileMovesLackingMigration: Boolean = false
   ) extends AbstractConfiguration:
     // TODO: why would `minimumMatchSize` be zero?
     require(0 <= minimumMatchSize)
