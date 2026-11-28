@@ -1498,7 +1498,7 @@ object MatchAnalysis extends StrictLogging:
                 basePath
               ) == size && leftSizesByPath(
                 leftPath
-              ) == size && !rightSizesByPath.contains(basePath)
+              ) == size
             end eligibleToKnockOut
 
             if eligibleToKnockOut then
@@ -1530,7 +1530,7 @@ object MatchAnalysis extends StrictLogging:
                 basePath
               ) == size && rightSizesByPath(
                 rightPath
-              ) == size && !leftSizesByPath.contains(basePath)
+              ) == size
             end eligibleToKnockOut
 
             if eligibleToKnockOut then
