@@ -385,10 +385,11 @@ object MoveDestinationsReport:
   enum OppositeSideAnchor[Element]:
     def boundaryElements: Seq[Element] =
       this match
-        case Plain(element) => Seq(element)
+        case Plain(element)                 => Seq(element)
         case OnlyOneInMigratedEdit(element) => Seq(element)
-        case AtLeastTwoInMigratedEdit(firstElement, secondElement) => Seq(firstElement, secondElement)
-    
+        case AtLeastTwoInMigratedEdit(firstElement, secondElement) =>
+          Seq(firstElement, secondElement)
+
     case Plain(element: Element)
     case OnlyOneInMigratedEdit(element: Element)
     case AtLeastTwoInMigratedEdit(firstElement: Element, lastElement: Element)

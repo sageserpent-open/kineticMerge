@@ -1508,7 +1508,8 @@ object Main extends StrictLogging:
                 // NOTE: we don't consult `mergeResultsByPath` because we know
                 // the outcome already. This is important, because deletion of
                 // an entire file on just one side is treated as a special case
-                // by `SectionedCodeExtension.merge` and does not necessarily remove the content.
+                // by `SectionedCodeExtension.merge` and does not necessarily
+                // remove the content.
                 reify {
                   deleteFile(baseDirectory)(path).reflect
                   deleteFile(theirDirectory)(path).reflect
@@ -1521,7 +1522,8 @@ object Main extends StrictLogging:
                 // NOTE: we don't consult `mergeResultsByPath` because we know
                 // the outcome already. This is important, because deletion of
                 // an entire file on just one side is treated as a special case
-                // by `SectionedCodeExtension.merge` and does not necessarily remove the content.
+                // by `SectionedCodeExtension.merge` and does not necessarily
+                // remove the content.
                 reify {
                   deleteFile(baseDirectory)(path).reflect
                   deleteFile(ourDirectory)(path).reflect
