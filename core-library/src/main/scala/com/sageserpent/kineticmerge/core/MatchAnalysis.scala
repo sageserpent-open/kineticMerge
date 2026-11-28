@@ -1469,8 +1469,7 @@ object MatchAnalysis extends StrictLogging:
       end contains
 
       private def withMatch(
-          aMatch: GenericMatch[Element],
-          pairwiseMatchesKnockOutFingerprintedInclusions: Boolean = false
+          aMatch: GenericMatch[Element]
       ): MatchesAndTheirSections =
         require(!contains(aMatch))
 
@@ -1494,45 +1493,21 @@ object MatchAnalysis extends StrictLogging:
               baseSectionsByPath = baseIncluding(baseSection),
               leftSectionsByPath = leftIncluding(leftSection),
               sectionsAndTheirMatches =
-                sectionsAndTheirMatches + (baseSection -> aMatch) + (leftSection -> aMatch),
-              baseFingerprintedInclusionsByPath =
-                if pairwiseMatchesKnockOutFingerprintedInclusions then
-                  knockOutFromBaseFingerprintedInclusions(baseSection)
-                else baseFingerprintedInclusionsByPath,
-              leftFingerprintedInclusionsByPath =
-                if pairwiseMatchesKnockOutFingerprintedInclusions then
-                  knockOutFromLeftFingerprintedInclusions(leftSection)
-                else leftFingerprintedInclusionsByPath
+                sectionsAndTheirMatches + (baseSection -> aMatch) + (leftSection -> aMatch)
             )
           case baseAndRight @ Match.BaseAndRight(baseSection, rightSection) =>
             copy(
               baseSectionsByPath = baseIncluding(baseSection),
               rightSectionsByPath = rightIncluding(rightSection),
               sectionsAndTheirMatches =
-                sectionsAndTheirMatches + (baseSection -> aMatch) + (rightSection -> aMatch),
-              baseFingerprintedInclusionsByPath =
-                if pairwiseMatchesKnockOutFingerprintedInclusions then
-                  knockOutFromBaseFingerprintedInclusions(baseSection)
-                else baseFingerprintedInclusionsByPath,
-              rightFingerprintedInclusionsByPath =
-                if pairwiseMatchesKnockOutFingerprintedInclusions then
-                  knockOutFromRightFingerprintedInclusions(rightSection)
-                else rightFingerprintedInclusionsByPath
+                sectionsAndTheirMatches + (baseSection -> aMatch) + (rightSection -> aMatch)
             )
           case leftAndRight @ Match.LeftAndRight(leftSection, rightSection) =>
             copy(
               leftSectionsByPath = leftIncluding(leftSection),
               rightSectionsByPath = rightIncluding(rightSection),
               sectionsAndTheirMatches =
-                sectionsAndTheirMatches + (leftSection -> aMatch) + (rightSection -> aMatch),
-              leftFingerprintedInclusionsByPath =
-                if pairwiseMatchesKnockOutFingerprintedInclusions then
-                  knockOutFromLeftFingerprintedInclusions(leftSection)
-                else leftFingerprintedInclusionsByPath,
-              rightFingerprintedInclusionsByPath =
-                if pairwiseMatchesKnockOutFingerprintedInclusions then
-                  knockOutFromRightFingerprintedInclusions(rightSection)
-                else rightFingerprintedInclusionsByPath
+                sectionsAndTheirMatches + (leftSection -> aMatch) + (rightSection -> aMatch)
             )
         end match
       end withMatch
