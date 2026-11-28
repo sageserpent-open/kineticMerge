@@ -129,6 +129,11 @@ object MatchAnalysis extends StrictLogging:
       baseSizesByPath.values ++ leftSizesByPath.values ++ rightSizesByPath.values
     )
 
+    val potentialEntireFileMatchSizesInAscendingOrder =
+      fileSizes.occurrences.collect {
+        case (size, count) if 1 < count => size
+      }.toVector
+
     val totalContentSize = fileSizes.sum
 
     val minimumNonEmptyFileSizeAcrossAllFilesOverAllSides =
@@ -323,94 +328,6 @@ object MatchAnalysis extends StrictLogging:
           size
         )
 
-      def withFileMovesLackingMigration: MatchesAndTheirSections =
-        if !configuration.includeFileMovesLackingMigration then
-          val elementEquality = summon[Eq[Element]]
-
-          val matchesForFileMovesLackingMigration =
-            val groupsOfBasePathsBySize  = baseSizesByPath.groupMap(_._2)(_._1)
-            val groupsOfLeftPathsBySize  = leftSizesByPath.groupMap(_._2)(_._1)
-            val groupsOfRightPathsBySize = rightSizesByPath.groupMap(_._2)(_._1)
-
-            val baseAndLeftSizeAlignments =
-              groupsOfBasePathsBySize `zipByKey` groupsOfLeftPathsBySize
-            val baseAndRightSizeAlignments =
-              groupsOfBasePathsBySize `zipByKey` groupsOfRightPathsBySize
-
-            val allSidesSizeAlignments =
-              (baseAndLeftSizeAlignments `zipByKeyWith` baseAndRightSizeAlignments) {
-                case ((basePaths, leftPaths), (_, rightPaths)) =>
-                  (basePaths, leftPaths, rightPaths)
-              }
-
-            val baseAndLeftMatches = baseAndLeftSizeAlignments.collect {
-              case (size, (basePaths, leftPaths))
-                  if !groupsOfRightPathsBySize.contains(size) =>
-                for
-                  basePath <- basePaths
-                  leftPath <- leftPaths
-                  baseFile = baseSources.filesByPath(basePath)
-                  leftFile = leftSources.filesByPath(leftPath)
-                  if (baseFile.content `corresponds` leftFile.content)(
-                    elementEquality.eqv
-                  )
-                yield Match.BaseAndLeft(
-                  baseSources.section(basePath)(startOffset = 0, size),
-                  leftSources.section(leftPath)(startOffset = 0, size)
-                )
-            }.flatten
-
-            val baseAndRightMatches = baseAndRightSizeAlignments.collect {
-              case (size, (basePaths, rightPaths))
-                  if !groupsOfLeftPathsBySize.contains(size) =>
-                for
-                  basePath  <- basePaths
-                  rightPath <- rightPaths
-                  baseFile  = baseSources.filesByPath(basePath)
-                  rightFile = rightSources.filesByPath(rightPath)
-                  if (baseFile.content `corresponds` rightFile.content)(
-                    elementEquality.eqv
-                  )
-                yield Match.BaseAndRight(
-                  baseSources.section(basePath)(startOffset = 0, size),
-                  rightSources.section(rightPath)(startOffset = 0, size)
-                )
-            }.flatten
-
-            val allSidesMatches = allSidesSizeAlignments.collect {
-              case (size, (basePaths, leftPaths, rightPaths)) =>
-                for
-                  basePath  <- basePaths
-                  leftPath  <- leftPaths
-                  rightPath <- rightPaths
-                  baseFile  = baseSources.filesByPath(basePath)
-                  leftFile  = leftSources.filesByPath(leftPath)
-                  rightFile = rightSources.filesByPath(rightPath)
-                  if (baseFile.content `corresponds` leftFile.content)(
-                    elementEquality.eqv
-                  ) && (baseFile.content `corresponds` rightFile.content)(
-                    elementEquality.eqv
-                  )
-                yield Match.AllSides(
-                  baseSources.section(basePath)(startOffset = 0, size),
-                  leftSources.section(leftPath)(startOffset = 0, size),
-                  rightSources.section(rightPath)(startOffset = 0, size)
-                )
-            }.flatten
-
-            baseAndLeftMatches ++ baseAndRightMatches ++ allSidesMatches
-          end matchesForFileMovesLackingMigration
-
-          matchesForFileMovesLackingMigration.foldLeft(empty) {
-            (matchesAndTheirSections, aMatch) =>
-              matchesAndTheirSections.withMatch(
-                aMatch,
-                pairwiseMatchesKnockOutFingerprintedInclusions = true
-              )
-          }
-        else empty
-      end withFileMovesLackingMigration
-
       given Ordering[BiteEdge] = Ordering.fromLessThan {
         case (
               BiteEdge.Start(startOffset),
@@ -524,24 +441,24 @@ object MatchAnalysis extends StrictLogging:
             // `bestMatchSize`...
             val candidateWindowSize = guessAtOptimalMatchSize
               .getOrElse {
-                // Speculative optimisation - if the largest file was
-                // modified on just one side (or coincidentally added as
-                // exact duplicates on both sides), then we may as well go
-                // straight to it to avoid the cost of working back up to
-                // that matching size with lots of overlapping matches.
-                val potentialFullMatchSize = for
-                  largestPertinentFileSize <- fileSizes
-                    .rangeFrom(bestMatchSize)
-                    .rangeTo(looseExclusiveUpperBoundOnMaximumMatchSize)
-                    .lastOption
-                  largestFileMightBeUnchangedOnOneSideOrCoincidentallyAddedAsInDuplicate =
-                    1 < fileSizes.get(largestPertinentFileSize)
-                  if largestFileMightBeUnchangedOnOneSideOrCoincidentallyAddedAsInDuplicate
-                yield largestPertinentFileSize
+                val potentialEntireFileMatchSize =
+                  val potentialMatchSizeIndex =
+                    potentialEntireFileMatchSizesInAscendingOrder
+                      .search(looseExclusiveUpperBoundOnMaximumMatchSize)
+                      .insertionPoint - 1
+
+                  Option
+                    .when(0 <= potentialMatchSizeIndex)(
+                      potentialEntireFileMatchSizesInAscendingOrder(
+                        potentialMatchSizeIndex
+                      )
+                    )
+                    .filter(_ >= bestMatchSize)
+                end potentialEntireFileMatchSize
 
                 val bisectedSize =
                   (bestMatchSize + looseExclusiveUpperBoundOnMaximumMatchSize) / 2
-                potentialFullMatchSize.fold(ifEmpty = bisectedSize)(
+                potentialEntireFileMatchSize.fold(ifEmpty = bisectedSize)(
                   _ max bisectedSize
                 )
               }
