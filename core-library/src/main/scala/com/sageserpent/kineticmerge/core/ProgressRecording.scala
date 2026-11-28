@@ -6,7 +6,8 @@ import org.jline.utils.WriterOutputStream
 
 import java.io.PrintStream
 import java.nio.charset.Charset
-import java.time.{Instant, Duration as JavaDuration}
+import java.time.Duration as JavaDuration
+import scala.concurrent.duration.Deadline
 
 /** Records progress from zero up to some implied maximum set up by
   * [[ProgressRecording.newSession]]. Progress may be moved up or down; so it is
@@ -25,12 +26,12 @@ trait ProgressRecordingSessionWithSummary(
     val maximumProgress: Int,
     val finalLabel: Option[String]
 ) extends ProgressRecordingSession:
-  private val startTime = Instant.now()
+  private val startTime = Deadline.now
 
   override def close(): Unit =
-    val duration = JavaDuration.between(startTime, Instant.now())
+    val durationInMilliseconds = (-startTime.timeLeft).toMillis max 0L
     println(
-      s"${finalLabel.getOrElse(label)} $maximumProgress (Completed in: ${DurationFormatUtils.formatDurationHMS(duration.toMillis)})"
+      s"${finalLabel.getOrElse(label)} $maximumProgress (Completed in: ${DurationFormatUtils.formatDurationHMS(durationInMilliseconds)})"
     )
   end close
 end ProgressRecordingSessionWithSummary
